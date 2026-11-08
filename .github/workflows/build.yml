@@ -1,4 +1,4 @@
-Name: Build C++ ESTMEDI to EXE
+name: Build C++ ESTMEDI to EXE
 
 on: [push]
 
