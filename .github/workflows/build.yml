@@ -10,14 +10,14 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MSYS2
+    - name: Set up MinGW environment
       uses: msys2/setup-msys2@v2
       with:
-        msystem: UCRT64
+        msystem: MINGW64
         update: false
-        install: mingw-w64-ucrt-x86_64-gcc
+        install: git mingw-w64-x86_64-toolchain
 
-    - name: Compile C++ Win32 GUI Code
+    - name: Compile with G++
       shell: msys2 {0}
       run: |
         g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -lgdi32 -luser32 -static -mwindows
