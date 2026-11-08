@@ -1,193 +1,277 @@
-#include <windows.h>
-#include <filesystem>
-#include <string>
-#include <algorithm> // max 함수용 필수 헤더
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_dx9.h"
+#include <d3d9.h>
+#include <tchar.h>
 
-namespace fs = std::filesystem;
+// DirectX9 인터페이스
+static LPDIRECT3D9              g_pD3D = NULL;
+static LPDIRECT3DDEVICE9        g_pd3dDevice = NULL;
+static D3DPRESENT_PARAMETERS    g_d3dpp = {};
 
-// 컨트롤 ID 정의
-#define ID_TAB_SCAN     101
-#define ID_TAB_OPTIMIZE 102
-#define ID_TAB_INFO     103
-#define ID_BTN_QUICK    104
-#define ID_BTN_DEEP     105
-#define ID_BTN_CLEAN    106
-#define ID_BTN_UPDATE   107
-#define ID_BTN_VERSION  108
+// Direct3D 초기화 함수 선언
+bool CreateDeviceD3D(HWND hWnd);
+void CleanupDeviceD3D();
+void ResetDevice();
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-HWND hMainWnd;
-HWND hCurrentPanel = NULL;
-HFONT hCustomFont;        // 굴림체 폰트
-HBRUSH hBgBrush;          // 배경색 브러시
-HBRUSH hPanelBrush;       // 카드 패널 화이트 브러시
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+    // 1. 윈도우 클래스 등록
+    WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, _T("EstmediImGuiClass"), NULL };
+    ::RegisterClassEx(&wc);
 
-// 윈도우 프로시저 선언
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-void ShowTabContent(int tabIndex);
-void RunScan(HWND hwnd, const wchar_t* scanType);
-void RunTempCleanup();
+    // 2. 메인 메인 윈도우 생성 (알약 2.5 비율 레퍼런스: 780x520)
+    HWND hwnd = ::CreateWindow(wc.lpszClassName, _T("ESTMEDI 1.3 Beta"), WS_OVERLAPPEDWINDOW ^ WS_THICKFRAME ^ WS_MAXIMIZEBOX, 100, 100, 780, 520, NULL, NULL, wc.hInstance, NULL);
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // 굴림체 폰트 생성
-    hCustomFont = CreateFontW(
-        14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"굴림"
-    );
-
-    hBgBrush = CreateSolidBrush(RGB(244, 246, 243));
-    hPanelBrush = CreateSolidBrush(RGB(255, 255, 255));
-
-    WNDCLASSW wc = { 0 };
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = hInstance;
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.hbrBackground = hBgBrush;
-    wc.lpszClassName = L"ESTMEDI25Class";
-
-    if (!RegisterClassW(&wc)) return 0;
-
-    hMainWnd = CreateWindowW(
-        L"ESTMEDI25Class", L"ESTMEDI 2.5 Classic Edition",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 640, 420,
-        NULL, NULL, hInstance, NULL
-    );
-
-    ShowWindow(hMainWnd, nCmdShow);
-    UpdateWindow(hMainWnd);
-
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    // 3. Direct3D 초기화
+    if (!CreateDeviceD3D(hwnd))
+    {
+        CleanupDeviceD3D();
+        ::UnregisterClass(wc.lpszClassName, wc.hInstance);
+        return 1;
     }
 
-    DeleteObject(hCustomFont);
-    DeleteObject(hBgBrush);
-    DeleteObject(hPanelBrush);
-    return (int)msg.wParam;
-}
+    ::ShowWindow(hwnd, SW_SHOWDEFAULT);
+    ::UpdateWindow(hwnd);
 
-void SetFontRecursive(HWND hwnd) {
-    HWND child = GetWindow(hwnd, GW_CHILD);
-    while (child) {
-        SendMessage(child, WM_SETFONT, (WPARAM)hCustomFont, TRUE);
-        child = GetWindow(child, GW_HWNDNEXT);
-    }
-}
+    // 4. ImGui 컨텍스트 생성 및 설정
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.IniFilename = NULL; // 설정 파일 생성 방지
 
-void ShowTabContent(int tabIndex) {
-    if (hCurrentPanel) DestroyWindow(hCurrentPanel);
+    // Win32 & DirectX9 백엔드 연결
+    ImGui_ImplWin32_Init(hwnd);
+    ImGui_ImplDX9_Init(g_pd3dDevice);
 
-    RECT rc;
-    GetClientRect(hMainWnd, &rc);
-    rc.top = 50;
-    rc.bottom -= 30;
+    // 5. 알약 2.5 감성의 녹색/모던 스티일 폰트 및 커스텀 컬러스키머 설정
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 0.0f;
+    style.FrameRounding = 6.0f;
+    style.PopupRounding = 4.0f;
+    style.ItemSpacing = ImVec2(10, 8);
 
-    if (tabIndex == 1) {
-        hCurrentPanel = CreateWindowW(L"STATIC", NULL, WS_CHILD | WS_VISIBLE, rc.left, rc.top, rc.right, rc.bottom, hMainWnd, NULL, NULL, NULL);
-        
-        CreateWindowW(L"STATIC", L"  실시간 감시를 사용중입니다.\n  알약 실시간 감시로 PC를 안전하게 보호하고 있습니다.", WS_CHILD | WS_VISIBLE | SS_LEFT, 12, 10, 600, 40, hCurrentPanel, NULL, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"빠른검사  >", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, 60, 195, 240, hCurrentPanel, (HMENU)ID_BTN_QUICK, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"정밀검사  >", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 215, 60, 195, 240, hCurrentPanel, (HMENU)ID_BTN_DEEP, NULL, NULL);
-        CreateWindowW(L"STATIC", L"\n 전국민 보안 업그레이드\n\n 더욱 빠르고 강력해진\n ESTMEDI 2.5", WS_CHILD | WS_VISIBLE | SS_CENTER, 418, 60, 195, 240, hCurrentPanel, NULL, NULL, NULL);
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_WindowBg]           = ImVec4(0.96f, 0.97f, 0.98f, 1.00f); // 연한 회색 배경
+    colors[ImGuiCol_Header]             = ImVec4(0.35f, 0.65f, 0.15f, 1.00f); // 메인 녹색 포인트
+    colors[ImGuiCol_HeaderHovered]      = ImVec4(0.42f, 0.75f, 0.18f, 1.00f);
+    colors[ImGuiCol_HeaderActive]       = ImVec4(0.30f, 0.58f, 0.12f, 1.00f);
+    colors[ImGuiCol_Button]             = ImVec4(0.35f, 0.65f, 0.15f, 1.00f);
+    colors[ImGuiCol_ButtonHovered]      = ImVec4(0.42f, 0.75f, 0.18f, 1.00f);
+    colors[ImGuiCol_ButtonActive]       = ImVec4(0.30f, 0.58f, 0.12f, 1.00f);
+    colors[ImGuiCol_Text]               = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+    colors[ImGuiCol_TextDisabled]       = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
 
-    } else if (tabIndex == 2) {
-        hCurrentPanel = CreateWindowW(L"STATIC", NULL, WS_CHILD | WS_VISIBLE, rc.left, rc.top, rc.right, rc.bottom, hMainWnd, NULL, NULL, NULL);
-        
-        CreateWindowW(L"STATIC", L"  PC정리를 통해 PC를 쾌적하게 사용할 수 있습니다. 정리할 항목을 선택해주세요.", WS_CHILD | WS_VISIBLE | SS_LEFT, 12, 10, 600, 30, hCurrentPanel, NULL, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"지금 바로 Temp 및 불필요 파일 정리 실행", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, 50, 400, 250, hCurrentPanel, (HMENU)ID_BTN_CLEAN, NULL, NULL);
-        CreateWindowW(L"STATIC", L"\n 원클릭 PC 클리너\n\n 시스템 속도를 저하시키는\n 임시 파일을 청소합니다.", WS_CHILD | WS_VISIBLE | SS_CENTER, 420, 50, 190, 250, hCurrentPanel, NULL, NULL, NULL);
+    // 메인 루프
+    bool done = false;
+    static int currentTab = 0; // 0: 검사하기, 1: PC최적화, 2: 플러스보안
 
-    } else if (tabIndex == 3) {
-        hCurrentPanel = CreateWindowW(L"STATIC", NULL, WS_CHILD | WS_VISIBLE, rc.left, rc.top, rc.right, rc.bottom, hMainWnd, NULL, NULL, NULL);
-        
-        CreateWindowW(L"BUTTON", L"윈도우 업데이트 상태 체크", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, 30, 600, 50, hCurrentPanel, (HMENU)ID_BTN_UPDATE, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"이스트메디(ESTMEDI) 버전 정보", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, 95, 600, 50, hCurrentPanel, (HMENU)ID_BTN_VERSION, NULL, NULL);
-    }
-
-    SetFontRecursive(hMainWnd);
-}
-
-void RunScan(HWND hwnd, const wchar_t* scanType) {
-    std::wstring msg = std::wstring(L"'") + scanType + L"'을(를) 진행하시겠습니까?";
-    int result = MessageBoxW(hwnd, msg.c_str(), scanType, MB_YESNO | MB_ICONQUESTION);
-    
-    if (result == IDYES) {
-        std::wstring workingMsg = L"[메딩이] 헌신적으로 드라이버를 돌리며\n" + std::wstring(scanType) + L" 작업을 진행 중입니다...";
-        MessageBoxW(hwnd, workingMsg.c_str(), L"ESTMEDI 작업 중", MB_OK | MB_ICONINFORMATION);
-
-        int detectedViruses = 0;
-
-        if (detectedViruses == 0) {
-            MessageBoxW(hwnd, L"[메딩이] 악성코드가 없습니다!\n\n프로그램을 종료합니다.", L"검사 완료", MB_OK | MB_ICONINFORMATION);
-            PostQuitMessage(0);
-        } else {
-            std::wstring threatMsg = L"악성코드가 " + std::to_wstring(detectedViruses) + L"개가 발견되었습니다.\n\n치료를 시작하시겠습니까?";
-            int treatResult = MessageBoxW(hwnd, threatMsg.c_str(), L"위협 발견", MB_YESNO | MB_ICONWARNING);
-            
-            if (treatResult == IDYES) {
-                MessageBoxW(hwnd, L"[메딩이] 🔧 드라이버를 돌리며 위협 요소를 말끔하게 치료하는 중...", L"ESTMEDI 치료 중", MB_OK | MB_ICONINFORMATION);
-                MessageBoxW(hwnd, L"[메딩이] 모든 위협 요소가 안전하게 치료되었습니다!", L"치료 완료", MB_OK | MB_ICONINFORMATION);
-            } else {
-                MessageBoxW(hwnd, L"치료가 취소되었습니다.", L"알림", MB_OK);
-            }
+    while (!done)
+    {
+        MSG msg;
+        while (::PeekMessage(&msg, NULL, 0U, 0U, PM_REMOVE))
+        {
+            ::TranslateMessage(&msg);
+            ::DispatchMessage(&msg);
+            if (msg.message == WM_QUIT)
+                done = true;
         }
-    }
-}
+        if (done) break;
 
-void RunTempCleanup() {
-    int deletedCount = 0;
-    wchar_t tempPath[MAX_PATH];
-    if (GetTempPathW(MAX_PATH, tempPath) != 0) {
-        try {
-            for (const auto& entry : fs::directory_iterator(tempPath)) {
-                if (fs::is_regular_file(entry.status())) {
-                    if (fs::remove(entry.path())) {
-                        deletedCount++;
-                    }
-                }
+        // ImGui 프레임 시작
+        ImGui_ImplDX9_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+
+        // 메인 프레임 윈도우 구성
+        ImGui::SetNextWindowPos(ImVec2(0, 0));
+        ImGui::SetNextWindowSize(io.DisplaySize);
+        ImGui::Begin("MainPanel", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+
+        // ----------------------------------------------------
+        // [1] 상단 알약 2.5 톤 네비게이션 탭 & 실시간 감시
+        // ----------------------------------------------------
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.35f, 0.65f, 0.15f, 1.00f));
+        ImGui::BeginChild("TopNav", ImVec2(0, 50), false);
+        
+        ImGui::SetCursorPos(ImVec2(15, 10));
+        if (ImGui::Button(currentTab == 0 ? "[ 검사하기 ]" : "검사하기", ImVec2(100, 30))) currentTab = 0;
+        ImGui::SameLine();
+        if (ImGui::Button(currentTab == 1 ? "[ PC최적화 ]" : "PC최적화", ImVec2(100, 30))) currentTab = 1;
+        ImGui::SameLine();
+        if (ImGui::Button(currentTab == 2 ? "[ 플러스보안 ]" : "플러스보안", ImVec2(100, 30))) currentTab = 2;
+
+        // 우측 상단 실시간 감시 상태 표시
+        ImGui::SameLine(ImGui::GetWindowWidth() - 170);
+        ImGui::SetCursorPosY(15);
+        ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "실시간 감시 : ON");
+        
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+
+        // ----------------------------------------------------
+        // [2] 메인 대시보드 및 카드 영역
+        // ----------------------------------------------------
+        ImGui::SetCursorPosY(65);
+        ImGui::Indent(20);
+        ImGui::TextSize();
+        ImGui::TextColored(ImVec4(0.1f, 0.1f, 0.1f, 1.0f), "PC가 안전하고 쾌적하게 보호되고 있습니다.");
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "엔진 버전: v1.3.0 Beta  |  실시간 보안 활성화 중");
+        ImGui::Unindent(20);
+
+        ImGui::SetCursorPosY(130);
+        
+        // 3분할 스마트 카드 (1 & 2: 기능 카드, 3: 스마트 정보 배너)
+        ImGui::BeginGroup();
+        {
+            // 카드 1: 빠른 검사
+            ImGui::BeginChild("Card1", ImVec2(230, 260), true);
+            ImGui::Text("\n   [ 빠른 검사 ]");
+            ImGui::Separator();
+            ImGui::Text("\n 주요 시스템 영역과\n 메모리를 신속하게\n 검사합니다.");
+            ImGui::SetCursorPosY(200);
+            if (ImGui::Button("검사 시작", ImVec2(210, 40))) {
+                // 빠른 검사 동작 로직
             }
-        } catch (...) {}
+            ImGui::EndChild();
+
+            ImGui::SameLine(0, 15);
+
+            // 카드 2: PC 최적화
+            ImGui::BeginChild("Card2", ImVec2(230, 260), true);
+            ImGui::Text("\n   [ PC 최적화 ]");
+            ImGui::Separator();
+            ImGui::Text("\n 불필요한 임시 파일과\n 시스템 레지스트리를\n 정리합니다.");
+            ImGui::SetCursorPosY(200);
+            if (ImGui::Button("최적화 실행", ImVec2(210, 40))) {
+                // PC 최적화 동작 로직
+            }
+            ImGui::EndChild();
+
+            ImGui::SameLine(0, 15);
+
+            // 카드 3: 우측 스마트 정보창 (스마트 딥블루 포인트)
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.16f, 0.22f, 1.00f));
+            ImGui::BeginChild("Card3", ImVec2(230, 260), true);
+            ImGui::TextColored(ImVec4(0.9f, 0.95f, 1.0f, 1.0f), "\n  ESTMEDI 1.3 BETA");
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.7f, 0.8f, 0.9f, 1.0f), 
+                "\n - 차세대 보안 엔진 적용\n"
+                " - 실시간 행위 기반 감지\n"
+                " - 스마트 메모리 최적화\n\n"
+                " 베타 테스트 진행 중입니다."
+            );
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+        }
+        ImGui::EndGroup();
+
+        // ----------------------------------------------------
+        // [3] 하단 푸터 (저작권 표시 및 상태바)
+        // ----------------------------------------------------
+        ImGui::SetCursorPosY(445);
+        ImGui::Separator();
+        ImGui::SetCursorPosY(455);
+        ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1.0f), " ESTMEDI v1.3 Beta  |  Copyright (c) ISSA STUDIO. All rights reserved.");
+        ImGui::SameLine(ImGui::GetWindowWidth() - 190);
+        if (ImGui::Button("DB 업데이트", ImVec2(170, 22))) {
+            // 업데이트 클릭 로직
+        }
+
+        ImGui::End();
+
+        // ImGui 렌더링
+        ImGui::EndFrame();
+        g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+        g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+        g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_XRGB(245, 247, 250), 1.0f, 0);
+        
+        if (g_pd3dDevice->BeginScene() >= 0)
+        {
+            ImGui::Render();
+            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+            g_pd3dDevice->EndScene();
+        }
+        HRESULT result = g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
+        if (result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET)
+            ResetDevice();
     }
-    std::wstring resultMsg = L"[메딩이] 시스템 Temp 파일 정리가 완료되었습니다!\n- 삭제된 임시 파일: " + std::to_wstring(std::max(deletedCount, 3)) + L"개\n- 확보된 여유 공간: 약 154 MB";
-    MessageBoxW(hMainWnd, resultMsg.c_str(), L"최적화 완료", MB_OK | MB_ICONINFORMATION);
+
+    // 종료 정리
+    ImGui_ImplDX9_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+
+    CleanupDeviceD3D();
+    ::DestroyWindow(hwnd);
+    ::UnregisterClass(wc.lpszClassName, wc.hInstance);
+
+    return 0;
 }
 
-LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
-    case WM_CREATE: {
-        CreateWindowW(L"BUTTON", L"검사하기", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 12, 10, 95, 32, hwnd, (HMENU)ID_TAB_SCAN, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"PC최적화", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 110, 10, 95, 32, hwnd, (HMENU)ID_TAB_OPTIMIZE, NULL, NULL);
-        CreateWindowW(L"BUTTON", L"업데이트 / 정보", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 208, 10, 115, 32, hwnd, (HMENU)ID_TAB_INFO, NULL, NULL);
+// ----------------------------------------------------
+// Direct3D 9 보조 함수 모음 (WinXP~Win11 범용)
+// ----------------------------------------------------
+bool CreateDeviceD3D(HWND hWnd)
+{
+    if ((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == NULL)
+        return false;
 
-        ShowTabContent(1);
+    ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
+    g_d3dpp.Windowed = TRUE;
+    g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN;
+    g_d3dpp.EnableAutoDepthStencil = TRUE;
+    g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
+    g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+
+    if (g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0)
+        return false;
+
+    return true;
+}
+
+void CleanupDeviceD3D()
+{
+    if (g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = NULL; }
+    if (g_pD3D) { g_pD3D->Release(); g_pD3D = NULL; }
+}
+
+void ResetDevice()
+{
+    ImGui_ImplDX9_InvalidateDeviceObjects();
+    HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
+    if (hr == D3DERR_INVALIDCALL)
+        IM_ASSERT(0);
+    ImGui_ImplDX9_CreateDeviceObjects();
+}
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
+        return true;
+
+    switch (msg)
+    {
+    case WM_SIZE:
+        if (g_pd3dDevice != NULL && wParam != SIZE_MINIMIZED)
+        {
+            g_d3dpp.BackBufferWidth = LOWORD(lParam);
+            g_d3dpp.BackBufferHeight = HIWORD(lParam);
+            ResetDevice();
+        }
+        return 0;
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xfff0) == SC_KEYMENU)
+            return 0;
         break;
-    }
-    case WM_CTLCOLORSTATIC: {
-        HDC hdcStatic = (HDC)wParam;
-        SetTextColor(hdcStatic, RGB(51, 65, 85));
-        SetBkColor(hdcStatic, RGB(244, 246, 243));
-        return (INT_PTR)hBgBrush;
-    }
-    case WM_COMMAND: {
-        int id = LOWORD(wParam);
-        if (id == ID_TAB_SCAN) ShowTabContent(1);
-        else if (id == ID_TAB_OPTIMIZE) ShowTabContent(2);
-        else if (id == ID_TAB_INFO) ShowTabContent(3);
-        else if (id == ID_BTN_QUICK) RunScan(hwnd, L"빠른 검사");
-        else if (id == ID_BTN_DEEP) RunScan(hwnd, L"정밀 검사");
-        else if (id == ID_BTN_CLEAN) RunTempCleanup();
-        else if (id == ID_BTN_UPDATE) MessageBoxW(hwnd, L"윈도우 보안 패치 및 시스템 정의 파일이 최신 상태입니다.", L"업데이트 체크", MB_OK | MB_ICONINFORMATION);
-        else if (id == ID_BTN_VERSION) MessageBoxW(hwnd, L"프로그램명: ESTMEDI 2.5 Classic (C++ Native)\n마스코트: 메딩이\n상태: 정상 구동 중", L"버전 정보", MB_OK | MB_ICONINFORMATION);
-        break;
-    }
     case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-    default:
-        return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+        ::PostQuitMessage(0);
+        return 0;
     }
-    return 0;
+    return ::DefWindowProc(hWnd, msg, wParam, lParam);
 }
