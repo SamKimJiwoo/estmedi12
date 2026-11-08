@@ -16,7 +16,7 @@ jobs:
     - name: Compile C++ Win32 GUI Code with MSVC
       shell: cmd
       run: |
-        cl /EHsc main.cpp /Fe:ESTMEDI.exe user32.lib gdi32.lib gdiplus.lib ole32.lib uuid.lib
+        cl /EHsc /utf-8 main.cpp /Fe:ESTMEDI.exe user32.lib gdi32.lib gdiplus.lib ole32.lib uuid.lib
 
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
