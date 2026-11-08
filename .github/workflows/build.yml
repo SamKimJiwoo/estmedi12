@@ -10,17 +10,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MSYS2 (UCRT64)
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: UCRT64
-        update: false
-        install: mingw-w64-ucrt-x86_64-toolchain
+    - name: Set up MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
-    - name: Compile C++ Win32 GUI Code
-      shell: msys2 {0}
+    - name: Compile C++ Win32 GUI Code with MSVC
       run: |
-        g++ -std=c++17 main.cpp -o ESTMEDI.exe -lgdi32 -luser32 -lole32 -luuid -lgdiplus -static -mwindows
+        cl /EHsc /W4 /O2 main.cpp /Fe:ESTMEDI.exe user32.lib gdi32.lib gdiplus.lib ole32.lib uuid.lib
 
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
