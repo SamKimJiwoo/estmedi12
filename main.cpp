@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 #include <tchar.h>
 #include <vector>
@@ -13,18 +14,20 @@ using namespace Gdiplus;
 ULONG_PTR gdiplusToken;
 HINSTANCE hInst;
 
-// 프로그램 상태 관리
-int g_currentTab = 0;           // 0: 검사하기, 1: PC최적화, 2: 플러스보안
-bool g_isScanning = false;      // 현재 검사 중 여부
-int g_scanProgress = 0;         // 검사 진행률 (0~100)
+int g_currentTab = 0;           
+bool g_isScanning = false;      
+int g_scanProgress = 0;         
 std::wstring g_currentScanPath = _T("대기 중..."); 
-int g_detectedThreatsCount = 0; // 발견된 위협 개수
+int g_detectedThreatsCount = 0; 
 
-// 발견된 가상의 악성 파일 목록 구조체
 struct ThreatItem {
     std::wstring filePath;
     std::wstring virusName;
+
+    ThreatItem(const std::wstring& path, const std::wstring& name)
+        : filePath(path), virusName(name) {}
 };
+
 std::vector<ThreatItem> g_threatList;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -75,7 +78,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     return (int)msg.wParam;
 }
 
-// 화면 렌더링 함수
 void OnPaint(HDC hdc, RECT rectClient)
 {
     Graphics g(hdc);
@@ -85,7 +87,6 @@ void OnPaint(HDC hdc, RECT rectClient)
     int width = rectClient.right - rectClient.left;
     int height = rectClient.bottom - rectClient.top;
 
-    // 1. 상단 네비게이션 바
     LinearGradientBrush topBgBrush(
         Rect(0, 0, width, 55),
         Color(255, 95, 175, 10),
@@ -110,16 +111,12 @@ void OnPaint(HDC hdc, RECT rectClient)
     g.FillRectangle(&SolidBrush(Color(50, 255, 255, 255)), Rect(width - 155, 13, 140, 28));
     g.DrawString(_T("실시간 감시 : ON"), -1, &subFont, PointF(width - 145, 19), &whiteBrush);
 
-    // 2. 메인 컨텐츠 배경
     g.FillRectangle(&SolidBrush(Color(255, 246, 248, 250)), 0, 55, width, height - 90);
 
     Font headerFont(&fontFamily, 14, FontStyleBold, UnitPoint);
     SolidBrush textDarkBrush(Color(255, 35, 35, 35));
     SolidBrush textGrayBrush(Color(255, 100, 100, 100));
 
-    // ---------------------------------------------------------
-    // [탭 0: 검사하기 화면]
-    // ---------------------------------------------------------
     if (g_currentTab == 0)
     {
         if (!g_isScanning && g_detectedThreatsCount == 0)
@@ -129,7 +126,6 @@ void OnPaint(HDC hdc, RECT rectClient)
 
             Pen borderPen(Color(255, 215, 220, 230), 1.5f);
 
-            // 빠른 검사 카드
             RectF card1(30, 140, 220, 260);
             g.FillRectangle(&whiteBrush, card1);
             g.DrawRectangle(&borderPen, card1);
@@ -139,14 +135,12 @@ void OnPaint(HDC hdc, RECT rectClient)
             g.FillRectangle(&activeTabBrush, Rect(50, 340, 180, 40));
             g.DrawString(_T("검사 시작"), -1, &tabFont, PointF(105, 350), &whiteBrush);
 
-            // 정밀 검사 카드
             RectF card2(265, 140, 220, 260);
             g.FillRectangle(&whiteBrush, card2);
             g.DrawRectangle(&borderPen, card2);
             g.DrawString(_T("정밀 검사"), -1, &headerFont, PointF(330, 170), &textDarkBrush);
             g.DrawString(_T("전체 디스크 드라이브를\n구석구석 검사합니다."), -1, &subFont, PointF(290, 215), &textGrayBrush);
 
-            // 우측 정보 배너
             RectF card3(500, 140, 245, 260);
             g.FillRectangle(&SolidBrush(Color(255, 32, 42, 56)), card3);
             Font bannerTitleFont(&fontFamily, 12, FontStyleBold, UnitPoint);
@@ -155,33 +149,28 @@ void OnPaint(HDC hdc, RECT rectClient)
         }
         else if (g_isScanning)
         {
-            // 검사 진행 중 화면
             g.DrawString(_T("시스템을 정밀하게 검사하고 있습니다..."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
             
             WCHAR progressText[256];
             wsprintf(progressText, _T("진행률: %d%%  |  현재 검사 중인 경로:"), g_scanProgress);
             g.DrawString(progressText, -1, &subFont, PointF(30, 110), &textGrayBrush);
 
-            // 현재 검사 중인 실제 파일 경로 출력 (C:/...)
             SolidBrush pathBoxBg(Color(255, 235, 240, 245));
             g.FillRectangle(&pathBoxBg, Rect(30, 140, 715, 60));
             g.DrawString(g_currentScanPath.c_str(), -1, &subFont, PointF(45, 160), &textDarkBrush);
 
-            // 게이지바 배경 및 채우기
             g.FillRectangle(&SolidBrush(Color(255, 220, 225, 230)), Rect(30, 230, 715, 25));
             int fillWidth = (715 * g_scanProgress) / 100;
             g.FillRectangle(&activeTabBrush, Rect(30, 230, fillWidth, 25));
         }
         else if (!g_isScanning && g_detectedThreatsCount > 0)
         {
-            // 악성코드 발견 완료 화면
             g.DrawString(_T("[경고] 위협이 발견되었습니다! 치료가 필요합니다."), -1, &headerFont, PointF(30, 75), &SolidBrush(Color(255, 220, 50, 50)));
             
             WCHAR threatCountText[256];
             wsprintf(threatCountText, _T("진단된 악성 위협 개수: %d개"), g_detectedThreatsCount);
             g.DrawString(threatCountText, -1, &subFont, PointF(30, 105), &textDarkBrush);
 
-            // 발견된 위협 리스트박스 박스
             SolidBrush listBg(Color(255, 255, 255, 255));
             g.FillRectangle(&listBg, Rect(30, 140, 715, 180));
             g.DrawRectangle(&Pen(Color(255, 220, 50, 50), 1.5f), Rect(30, 140, 715, 180));
@@ -193,11 +182,9 @@ void OnPaint(HDC hdc, RECT rectClient)
                 yOffset += 25;
             }
 
-            // [치료하기] 버튼 생성
             g.FillRectangle(&activeTabBrush, Rect(250, 340, 130, 45));
             g.DrawString(_T("치료하기"), -1, &headerFont, PointF(280, 350), &whiteBrush);
 
-            // [다시 검사] 버튼
             g.FillRectangle(&SolidBrush(Color(255, 100, 100, 100)), Rect(400, 340, 130, 45));
             g.DrawString(_T("다시 검사"), -1, &headerFont, PointF(430, 350), &whiteBrush);
         }
@@ -232,7 +219,6 @@ void OnPaint(HDC hdc, RECT rectClient)
         g.DrawString(_T("[파일] USB 자동 검사 및 바이러스 보호 : 활성화"), -1, &headerFont, PointF(60, 280), &textDarkBrush);
     }
 
-    // 4. 하단 푸터 (저작권 표시)
     g.FillRectangle(&SolidBrush(Color(255, 230, 235, 240)), 0, height - 35, width, 35);
     g.DrawLine(&Pen(Color(255, 205, 212, 220)), 0, height - 35, width, height - 35);
 
@@ -241,21 +227,12 @@ void OnPaint(HDC hdc, RECT rectClient)
     g.DrawString(_T("DB 버전: 2026.11.08"), -1, &copyrightFont, PointF(width - 135, height - 23), &textDarkBrush);
 }
 
-// 실제 스캔 시뮬레이션 및 경로 탐지 함수
 void StartRealScan(HWND hWnd)
 {
     g_isScanning = true;
     g_scanProgress = 0;
     g_detectedThreatsCount = 0;
     g_threatList.clear();
-
-    std::wstring scanPaths[] = {
-        _T("C:\\Windows\\System32\\drivers\\temp_malware.sys"),
-        _T("C:\\Users\\Public\\Downloads\\Trojan.Generic.KD.exe"),
-        _T("C:\\Program Files\\UnknownApp\\malicious_plugin.dll"),
-        _T("C:\\Windows\\Temp\\backdoor_script.vbs"),
-        _T("C:\\Users\\Default\\AppData\\Local\\Worm.Autorun.Gen")
-    };
 
     for (int i = 1; i <= 100; i++) {
         g_scanProgress = i;
@@ -270,9 +247,9 @@ void StartRealScan(HWND hWnd)
         Sleep(25);
     }
 
-    g_threatList.push_back({ _T("C:\\Windows\\System32\\drivers\\temp_malware.sys"), _T("Trojan/Win32.Malware") });
-    g_threatList.push_back({ _T("C:\\Users\\Public\\Downloads\\Trojan.Generic.KD.exe"), _T("Backdoor/Script.Agent") });
-    g_threatList.push_back({ _T("C:\\Windows\\Temp\\backdoor_script.vbs"), _T("Worm/VBS.Autorun") });
+    g_threatList.push_back(ThreatItem(_T("C:\\Windows\\System32\\drivers\\temp_malware.sys"), _T("Trojan/Win32.Malware")));
+    g_threatList.push_back(ThreatItem(_T("C:\\Users\\Public\\Downloads\\Trojan.Generic.KD.exe"), _T("Backdoor/Script.Agent")));
+    g_threatList.push_back(ThreatItem(_T("C:\\Windows\\Temp\\backdoor_script.vbs"), _T("Worm/VBS.Autorun")));
 
     g_detectedThreatsCount = (int)g_threatList.size();
     g_isScanning = false;
@@ -280,7 +257,6 @@ void StartRealScan(HWND hWnd)
     InvalidatedRect(hWnd);
 }
 
-// 악성코드 진짜 치료 수행 함수
 void HealThreats(HWND hWnd)
 {
     int result = MessageBox(hWnd, 
@@ -303,7 +279,6 @@ void HealThreats(HWND hWnd)
     }
 }
 
-// 마우스 클릭 이벤트 처리
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
