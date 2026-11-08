@@ -10,13 +10,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MinGW
-      uses: egor-tukin/setup-mingw@v2
+    - name: Set up MSYS2 and Compile
+      uses: msys2/setup-msys2@v2
       with:
-        version: 13.1.0
-        platform: x64
+        msystem: UCRT64
+        update: false
+        install: mingw-w64-ucrt-x86_64-gcc
 
-    - name: Compile C++ Win32 GUI Code
+    - name: Build C++ Win32 GUI Binary
+      shell: msys2 {0}
       run: |
         g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -lgdi32 -luser32 -static -mwindows
 
