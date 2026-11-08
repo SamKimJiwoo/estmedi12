@@ -17,17 +17,10 @@ jobs:
         update: false
         install: mingw-w64-ucrt-x86_64-gcc
 
-    - name: Check files and Compile C++
+    - name: Compile C++ Win32 GUI Code
       shell: msys2 {0}
       run: |
-        echo "=== 현재 폴더 파일 목록 확인 ==="
-        ls -la
-        
-        echo "=== C++ 컴파일 시작 ==="
         g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -lgdi32 -luser32 -static -mwindows
-        
-        echo "=== 빌드된 파일 확인 ==="
-        ls -la ESTMEDI.exe
 
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
