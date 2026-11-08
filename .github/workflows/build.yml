@@ -10,15 +10,16 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: UCRT64
-        update: false
-        install: mingw-w64-ucrt-x86_64-gcc
+    - name: Install MinGW via Chocolatey
+      run: |
+        choco install mingw -y
 
-    - name: Compile C++ Code with Windows Subsystem
-      shell: msys2 {0}
+    - name: Add MinGW to PATH and Verify
+      run: |
+        echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
+        g++ --version
+
+    - name: Compile C++ Win32 Code
       run: |
         g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -static -mwindows
 
