@@ -1,0 +1,29 @@
+name: Build C++ ESTMEDI to EXE
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: false
+        install: mingw-w64-ucrt-x86_64-gcc
+
+    - name: Compile C++ Code with Windows Subsystem
+      shell: msys2 {0}
+      run: |
+        g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -static -mwindows
+
+    - name: Upload EXE artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ESTMEDI-Classic-EXE
+        path: ESTMEDI.exe
