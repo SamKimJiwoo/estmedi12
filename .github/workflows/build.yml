@@ -15,9 +15,7 @@ jobs:
       with:
         msystem: UCRT64
         update: false
-        install: >-
-          mingw-w64-ucrt-x86_64-toolchain
-          mingw-w64-ucrt-x86_64-gdiplus
+        install: mingw-w64-ucrt-x86_64-toolchain
 
     - name: Compile C++ Win32 GUI Code
       shell: msys2 {0}
