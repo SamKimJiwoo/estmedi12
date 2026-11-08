@@ -10,18 +10,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Install MinGW via Chocolatey
-      run: |
-        choco install mingw -y
+    - name: Set up MinGW
+      uses: egor-tukin/setup-mingw@v2
+      with:
+        version: 13.1.0
+        platform: x64
 
-    - name: Add MinGW to PATH and Verify
+    - name: Compile C++ Win32 GUI Code
       run: |
-        echo "C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin" >> $env:GITHUB_PATH
-        g++ --version
-
-    - name: Compile C++ Win32 Code
-      run: |
-        g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -static -mwindows
+        g++ -std=c++17 main.cpp -o ESTMEDI.exe -lstdc++fs -lgdi32 -luser32 -static -mwindows
 
     - name: Upload EXE artifact
       uses: actions/upload-artifact@v4
