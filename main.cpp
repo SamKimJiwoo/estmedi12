@@ -1,19 +1,9 @@
 #include <windows.h>
-#include <objidl.h>
-#include <gdiplus.h>
 #include <tchar.h>
 #include <vector>
 #include <string>
 
-#pragma comment(lib, "gdiplus.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-
-using namespace Gdiplus;
-
-ULONG_PTR gdiplusToken;
 HINSTANCE hInst;
-
 int g_currentTab = 0;           
 bool g_isScanning = false;      
 int g_scanProgress = 0;         
@@ -23,7 +13,6 @@ int g_detectedThreatsCount = 0;
 struct ThreatItem {
     std::wstring filePath;
     std::wstring virusName;
-
     ThreatItem(const std::wstring& path, const std::wstring& name)
         : filePath(path), virusName(name) {}
 };
@@ -38,9 +27,6 @@ void RefreshScreen(HWND hWnd);
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     hInst = hInstance;
-
-    GdiplusStartupInput gdiplusStartupInput;
-    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
 
     WNDCLASSEX wcex;
     wcex.cbSize         = sizeof(WNDCLASSEX);
@@ -74,157 +60,149 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         DispatchMessage(&msg);
     }
 
-    GdiplusShutdown(gdiplusToken);
     return (int)msg.wParam;
 }
 
 void OnPaint(HDC hdc, RECT rectClient)
 {
-    Graphics g(hdc);
-    g.SetSmoothingMode(SmoothingModeAntiAlias);
-    g.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
-
     int width = rectClient.right - rectClient.left;
     int height = rectClient.bottom - rectClient.top;
 
-    LinearGradientBrush topBgBrush(
-        Rect(0, 0, width, 55),
-        Color(255, 95, 175, 10),
-        Color(255, 75, 150, 5),
-        LinearGradientModeVertical
-    );
-    g.FillRectangle(&topBgBrush, 0, 0, width, 55);
+    // 배경색 채우기 (연한 회색빛 백신 배경)
+    HBRUSH bgBrush = CreateSolidBrush(RGB(246, 248, 250));
+    FillRect(hdc, &rectClient, bgBrush);
+    DeleteObject(bgBrush);
 
-    FontFamily fontFamily(_T("Malgun Gothic"));
-    Font tabFont(&fontFamily, 10.5f, FontStyleBold, UnitPoint);
-    SolidBrush whiteBrush(Color(255, 255, 255, 255));
-    SolidBrush activeTabBrush(Color(255, 55, 120, 0));
+    // 상단 네비게이션바 (초록빛 알약 스타일)
+    RECT rcTop = { 0, 0, width, 55 };
+    HBRUSH topBrush = CreateSolidBrush(RGB(75, 150, 5));
+    FillRect(hdc, &rcTop, topBrush);
+    DeleteObject(topBrush);
 
-    int tabXPos = 15 + (g_currentTab * 105);
-    g.FillRectangle(&activeTabBrush, tabXPos, 8, 100, 38);
+    // 탭 배경 칠하기
+    int tabX = 15 + (g_currentTab * 105);
+    RECT rcTab = { tabX, 8, tabX + 100, 46 };
+    HBRUSH activeTabBrush = CreateSolidBrush(RGB(55, 120, 0));
+    FillRect(hdc, &rcTab, activeTabBrush);
+    DeleteObject(activeTabBrush);
 
-    g.DrawString(_T("Scan"), -1, &tabFont, PointF(45, 18), &whiteBrush);
-    g.DrawString(_T("Optimize"), -1, &tabFont, PointF(148, 18), &whiteBrush);
-    g.DrawString(_T("Security"), -1, &tabFont, PointF(252, 18), &whiteBrush);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(255, 255, 255));
 
-    Font subFont(&fontFamily, 9, FontStyleRegular, UnitPoint);
-    g.FillRectangle(&SolidBrush(Color(50, 255, 255, 255)), Rect(width - 155, 13, 140, 28));
-    g.DrawString(_T("Real-time : ON"), -1, &subFont, PointF(width - 142, 19), &whiteBrush);
+    // 탭 텍스트 출력
+    TextOut(hdc, 45, 18, _T("Scan"), 4);
+    TextOut(hdc, 148, 18, _T("Optimize"), 8);
+    TextOut(hdc, 252, 18, _T("Security"), 8);
 
-    g.FillRectangle(&SolidBrush(Color(255, 246, 248, 250)), 0, 55, width, height - 90);
+    // 실시간 감시 상태 표시
+    SetTextColor(hdc, RGB(255, 255, 255));
+    TextOut(hdc, width - 135, 18, _T("Real-time : ON"), 14);
 
-    Font headerFont(&fontFamily, 14, FontStyleBold, UnitPoint);
-    SolidBrush textDarkBrush(Color(255, 35, 35, 35));
-    SolidBrush textGrayBrush(Color(255, 100, 100, 100));
-
+    // 본문 내용 출력
+    SetTextColor(hdc, RGB(35, 35, 35));
     if (g_currentTab == 0)
     {
         if (!g_isScanning && g_detectedThreatsCount == 0)
         {
-            g.DrawString(_T("Your PC is safely protected."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-            g.DrawString(_T("Next-Gen Security Engine v1.3.0 Beta Active"), -1, &subFont, PointF(30, 105), &textGrayBrush);
+            TextOut(hdc, 30, 75, _T("Your PC is safely protected."), 27);
+            SetTextColor(hdc, RGB(100, 100, 100));
+            TextOut(hdc, 30, 105, _T("Next-Gen Security Engine v1.3.0 Beta Active"), 42);
 
-            Pen borderPen(Color(255, 215, 220, 230), 1.5f);
+            // 빠른 검사 버튼 박스
+            RECT rcCard1 = { 30, 140, 250, 400 };
+            HBRUSH whiteBrush = (HBRUSH)GetStockObject(WHITE_BRUSH);
+            FillRect(hdc, &rcCard1, whiteBrush);
+            FrameRect(hdc, &rcCard1, (HBRUSH)GetStockObject(GRAY_BRUSH));
 
-            RectF card1(30, 140, 220, 260);
-            g.FillRectangle(&whiteBrush, card1);
-            g.DrawRectangle(&borderPen, card1);
-            g.DrawString(_T("Quick Scan"), -1, &headerFont, PointF(85, 170), &textDarkBrush);
-            g.DrawString(_T("Quickly scans critical system\nareas and system memory."), -1, &subFont, PointF(50, 215), &textGrayBrush);
-            
-            g.FillRectangle(&activeTabBrush, Rect(50, 340, 180, 40));
-            g.DrawString(_T("Start Scan"), -1, &tabFont, PointF(102, 350), &whiteBrush);
+            SetTextColor(hdc, RGB(35, 35, 35));
+            TextOut(hdc, 85, 170, _T("Quick Scan"), 10);
+            TextOut(hdc, 50, 215, _T("Quickly scans critical areas."), 27);
 
-            RectF card2(265, 140, 220, 260);
-            g.FillRectangle(&whiteBrush, card2);
-            g.DrawRectangle(&borderPen, card2);
-            g.DrawString(_T("Full Scan"), -1, &headerFont, PointF(330, 170), &textDarkBrush);
-            g.DrawString(_T("Scans all local disk drives\nthoroughly for threats."), -1, &subFont, PointF(290, 215), &textGrayBrush);
+            // 시작 버튼
+            RECT rcBtn = { 50, 340, 230, 380 };
+            HBRUSH btnBrush = CreateSolidBrush(RGB(55, 120, 0));
+            FillRect(hdc, &rcBtn, btnBrush);
+            DeleteObject(btnBrush);
 
-            RectF card3(500, 140, 245, 260);
-            g.FillRectangle(&SolidBrush(Color(255, 32, 42, 56)), card3);
-            Font bannerTitleFont(&fontFamily, 12, FontStyleBold, UnitPoint);
-            g.DrawString(_T("ESTMEDI 1.3 BETA"), -1, &bannerTitleFont, PointF(520, 165), &whiteBrush);
-            g.DrawString(_T("Real-time Path Engine.\n\n- C:/ Drive Deep Scan\n- Heuristic Threat Detection\n- Safe Quarantine & Heal"), -1, &subFont, PointF(520, 210), &SolidBrush(Color(255, 200, 210, 225)));
+            SetTextColor(hdc, RGB(255, 255, 255));
+            TextOut(hdc, 102, 352, _T("Start Scan"), 10);
         }
         else if (g_isScanning)
         {
-            g.DrawString(_T("Scanning system files and memory..."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
+            TextOut(hdc, 30, 75, _T("Scanning system files and memory..."), 35);
             
             WCHAR progressText[256];
-            wsprintf(progressText, _T("Progress: %d%%  |  Current Path:"), g_scanProgress);
-            g.DrawString(progressText, -1, &subFont, PointF(30, 110), &textGrayBrush);
+            wsprintf(progressText, _T("Progress: %d%% | Path: %s"), g_scanProgress, g_currentScanPath.c_str());
+            TextOut(hdc, 30, 110, progressText, lstrlen(progressText));
 
-            SolidBrush pathBoxBg(Color(255, 235, 240, 245));
-            g.FillRectangle(&pathBoxBg, Rect(30, 140, 715, 60));
-            g.DrawString(g_currentScanPath.c_str(), -1, &subFont, PointF(45, 160), &textDarkBrush);
+            // 프로그레스 바 배경
+            RECT rcBarBg = { 30, 160, 745, 190 };
+            FillRect(hdc, &rcBarBg, (HBRUSH)GetStockObject(WHITE_BRUSH));
+            FrameRect(hdc, &rcBarBg, (HBRUSH)GetStockObject(GRAY_BRUSH));
 
-            g.FillRectangle(&SolidBrush(Color(255, 220, 225, 230)), Rect(30, 230, 715, 25));
-            int fillWidth = (715 * g_scanProgress) / 100;
-            g.FillRectangle(&activeTabBrush, Rect(30, 230, fillWidth, 25));
+            // 프로그레스 바 채우기
+            RECT rcBarFill = { 30, 160, 30 + (715 * g_scanProgress) / 100, 190 };
+            HBRUSH fillBrush = CreateSolidBrush(RGB(55, 120, 0));
+            FillRect(hdc, &rcBarFill, fillBrush);
+            DeleteObject(fillBrush);
         }
         else if (!g_isScanning && g_detectedThreatsCount > 0)
         {
-            g.DrawString(_T("[WARNING] Threats detected! Action required."), -1, &headerFont, PointF(30, 75), &SolidBrush(Color(255, 220, 50, 50)));
-            
+            SetTextColor(hdc, RGB(220, 50, 50));
+            TextOut(hdc, 30, 75, _T("[WARNING] Threats detected! Action required."), 42);
+
+            SetTextColor(hdc, RGB(35, 35, 35));
             WCHAR threatCountText[256];
             wsprintf(threatCountText, _T("Total Threats Found: %d"), g_detectedThreatsCount);
-            g.DrawString(threatCountText, -1, &subFont, PointF(30, 105), &textDarkBrush);
+            TextOut(hdc, 30, 105, threatCountText, lstrlen(threatCountText));
 
-            SolidBrush listBg(Color(255, 255, 255, 255));
-            g.FillRectangle(&listBg, Rect(30, 140, 715, 180));
-            g.DrawRectangle(&Pen(Color(255, 220, 50, 50), 1.5f), Rect(30, 140, 715, 180));
+            // 위협 리스트 박스
+            RECT rcList = { 30, 140, 745, 320 };
+            FillRect(hdc, &rcList, (HBRUSH)GetStockObject(WHITE_BRUSH));
+            FrameRect(hdc, &rcList, (HBRUSH)GetStockObject(GRAY_BRUSH));
 
             int yOffset = 155;
             for (const auto& threat : g_threatList) {
-                std::wstring itemInfo = threat.virusName + _T("  ->  ") + threat.filePath;
-                g.DrawString(itemInfo.c_str(), -1, &subFont, PointF(45, (REAL)yOffset), &textDarkBrush);
+                std::wstring itemInfo = threat.virusName + _T(" -> ") + threat.filePath;
+                TextOut(hdc, 45, yOffset, itemInfo.c_str(), (int)itemInfo.length());
                 yOffset += 25;
             }
 
-            g.FillRectangle(&activeTabBrush, Rect(250, 340, 130, 45));
-            g.DrawString(_T("Heal All"), -1, &headerFont, PointF(280, 350), &whiteBrush);
+            // 치료하기 버튼
+            RECT rcHealBtn = { 250, 340, 380, 385 };
+            HBRUSH healBrush = CreateSolidBrush(RGB(220, 50, 50));
+            FillRect(hdc, &rcHealBtn, healBrush);
+            DeleteObject(healBrush);
 
-            g.FillRectangle(&SolidBrush(Color(255, 100, 100, 100)), Rect(400, 340, 130, 45));
-            g.DrawString(_T("Re-scan"), -1, &headerFont, PointF(430, 350), &whiteBrush);
+            SetTextColor(hdc, RGB(255, 255, 255));
+            TextOut(hdc, 285, 352, _T("Heal All"), 8);
         }
     }
     else if (g_currentTab == 1)
     {
-        g.DrawString(_T("Optimize system temporary files and registry."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-        g.DrawString(_T("Optimization targets ready"), -1, &subFont, PointF(30, 105), &textGrayBrush);
-
-        RectF optBox(30, 140, 715, 260);
-        g.FillRectangle(&whiteBrush, optBox);
-        g.DrawRectangle(&Pen(Color(255, 215, 220, 230), 1.5f), optBox);
-
-        g.DrawString(_T("- Clean system temporary files (Ready)"), -1, &tabFont, PointF(60, 170), &textDarkBrush);
-        g.DrawString(_T("- Web browser cache & cookies clean (Ready)"), -1, &tabFont, PointF(60, 210), &textDarkBrush);
-        g.DrawString(_T("- RAM optimization and process trim (Ready)"), -1, &tabFont, PointF(60, 250), &textDarkBrush);
-
-        g.FillRectangle(&activeTabBrush, Rect(280, 320, 200, 45));
-        g.DrawString(_T("Run Optimization"), -1, &headerFont, PointF(310, 330), &whiteBrush);
+        TextOut(hdc, 30, 75, _T("Optimize system temporary files."), 31);
+        RECT rcBox = { 30, 140, 745, 400 };
+        FillRect(hdc, &rcBox, (HBRUSH)GetStockObject(WHITE_BRUSH));
+        FrameRect(hdc, &rcBox, (HBRUSH)GetStockObject(GRAY_BRUSH));
+        TextOut(hdc, 60, 180, _T("- Clean system temporary files (Ready)"), 38);
     }
     else if (g_currentTab == 2)
     {
-        g.DrawString(_T("Plus Security Modules & Network Shield"), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-        g.DrawString(_T("System Firewall Active"), -1, &subFont, PointF(30, 105), &textGrayBrush);
-
-        RectF secBox(30, 140, 715, 260);
-        g.FillRectangle(&whiteBrush, secBox);
-        g.DrawRectangle(&Pen(Color(255, 215, 220, 230), 1.5f), secBox);
-
-        g.DrawString(_T("[Shield] Ransomware Safe Guard : Active"), -1, &headerFont, PointF(60, 180), &textDarkBrush);
-        g.DrawString(_T("[Network] Anti-Phishing Web Filter : Active"), -1, &headerFont, PointF(60, 230), &textDarkBrush);
-        g.DrawString(_T("[USB] Auto-Scan Removable Drives : Active"), -1, &headerFont, PointF(60, 280), &textDarkBrush);
+        TextOut(hdc, 30, 75, _T("Plus Security Modules & Network Shield"), 38);
+        RECT rcBox = { 30, 140, 745, 400 };
+        FillRect(hdc, &rcBox, (HBRUSH)GetStockObject(WHITE_BRUSH));
+        FrameRect(hdc, &rcBox, (HBRUSH)GetStockObject(GRAY_BRUSH));
+        TextOut(hdc, 60, 180, _T("[Shield] Ransomware Safe Guard : Active"), 39);
     }
 
-    g.FillRectangle(&SolidBrush(Color(255, 230, 235, 240)), 0, height - 35, width, 35);
-    g.DrawLine(&Pen(Color(255, 205, 212, 220)), 0, height - 35, width, height - 35);
+    // 하단 푸터
+    RECT rcFooter = { 0, height - 35, width, height };
+    HBRUSH footerBrush = CreateSolidBrush(RGB(230, 235, 240));
+    FillRect(hdc, &rcFooter, footerBrush);
+    DeleteObject(footerBrush);
 
-    Font copyrightFont(&fontFamily, 8.5f, FontStyleRegular, UnitPoint);
-    g.DrawString(_T("ESTMEDI v1.3 Beta  |  Copyright (c) ISSA STUDIO. All rights reserved."), -1, &copyrightFont, PointF(15, height - 23), &textGrayBrush);
-    g.DrawString(_T("DB: 2026.11.08"), -1, &copyrightFont, PointF(width - 110, height - 23), &textDarkBrush);
+    SetTextColor(hdc, RGB(100, 100, 100));
+    TextOut(hdc, 15, height - 25, _T("ESTMEDI v1.3 Beta | Copyright (c) ISSA STUDIO."), 45);
 }
 
 void StartRealScan(HWND hWnd)
@@ -236,45 +214,33 @@ void StartRealScan(HWND hWnd)
 
     for (int i = 1; i <= 100; i++) {
         g_scanProgress = i;
-        
         if (i == 20) g_currentScanPath = _T("C:\\Windows\\System32\\...");
-        else if (i == 45) g_currentScanPath = _T("C:\\Users\\Public\\Downloads\\...");
-        else if (i == 70) g_currentScanPath = _T("C:\\Program Files\\UnknownApp\\...");
-        else if (i == 90) g_currentScanPath = _T("C:\\Windows\\Temp\\...");
-
+        else if (i == 60) g_currentScanPath = _T("C:\\Users\\Public\\Downloads\\...");
+        
         RefreshScreen(hWnd);
         UpdateWindow(hWnd);
-        Sleep(25);
+        Sleep(20);
     }
 
-    g_threatList.push_back(ThreatItem(_T("C:\\Windows\\System32\\drivers\\temp_malware.sys"), _T("Trojan/Win32.Malware")));
-    g_threatList.push_back(ThreatItem(_T("C:\\Users\\Public\\Downloads\\Trojan.Generic.KD.exe"), _T("Backdoor/Script.Agent")));
-    g_threatList.push_back(ThreatItem(_T("C:\\Windows\\Temp\\backdoor_script.vbs"), _T("Worm/VBS.Autorun")));
+    g_threatList.push_back(ThreatItem(_T("C:\\Windows\\System32\\drivers\\temp_malware.sys"), _T("Trojan/Win32")));
+    g_threatList.push_back(ThreatItem(_T("C:\\Users\\Public\\Downloads\\malicious.exe"), _T("Backdoor/Agent")));
 
     g_detectedThreatsCount = (int)g_threatList.size();
     g_isScanning = false;
-
     RefreshScreen(hWnd);
 }
 
 void HealThreats(HWND hWnd)
 {
-    int result = MessageBox(hWnd, 
-        _T("Do you really want to heal and remove detected threats?\n(Infected files will be safely deleted.)"), 
-        _T("ESTMEDI 1.3 Beta - Security Heal"), 
-        MB_YESNO | MB_ICONWARNING);
-
+    int result = MessageBox(hWnd, _T("Do you really want to heal and remove detected threats?"), _T("ESTMEDI Security"), MB_YESNO | MB_ICONWARNING);
     if (result == IDYES)
     {
         for (const auto& threat : g_threatList) {
             DeleteFileW(threat.filePath.c_str());
         }
-
-        MessageBox(hWnd, _T("All threats have been successfully healed and removed!\nYour PC is now safe."), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
-        
+        MessageBox(hWnd, _T("All threats have been successfully removed!"), _T("ESTMEDI"), MB_OK | MB_ICONINFORMATION);
         g_detectedThreatsCount = 0;
         g_threatList.clear();
-
         RefreshScreen(hWnd);
     }
 }
@@ -305,16 +271,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 {
                     HealThreats(hWnd);
                 }
-                else if (g_detectedThreatsCount > 0 && (x >= 400 && x <= 530 && y >= 340 && y <= 385))
-                {
-                    g_detectedThreatsCount = 0;
-                    RefreshScreen(hWnd);
-                }
-            }
-
-            if (g_currentTab == 1 && (x >= 280 && x <= 480 && y >= 320 && y <= 365))
-            {
-                MessageBox(hWnd, _T("PC Optimization completed successfully!\n(Temporary files cleaned)"), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
             }
         }
         break;
