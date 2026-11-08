@@ -17,7 +17,7 @@ HINSTANCE hInst;
 int g_currentTab = 0;           
 bool g_isScanning = false;      
 int g_scanProgress = 0;         
-std::wstring g_currentScanPath = _T("대기 중..."); 
+std::wstring g_currentScanPath = _T("Ready..."); 
 int g_detectedThreatsCount = 0; 
 
 struct ThreatItem {
@@ -33,7 +33,7 @@ std::vector<ThreatItem> g_threatList;
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void StartRealScan(HWND hWnd);
 void HealThreats(HWND hWnd);
-void InvalidatedRect(HWND hWnd);
+void RefreshScreen(HWND hWnd);
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
@@ -103,13 +103,13 @@ void OnPaint(HDC hdc, RECT rectClient)
     int tabXPos = 15 + (g_currentTab * 105);
     g.FillRectangle(&activeTabBrush, tabXPos, 8, 100, 38);
 
-    g.DrawString(_T("검사하기"), -1, &tabFont, PointF(32, 18), &whiteBrush);
-    g.DrawString(_T("PC최적화"), -1, &tabFont, PointF(137, 18), &whiteBrush);
-    g.DrawString(_T("플러스보안"), -1, &tabFont, PointF(242, 18), &whiteBrush);
+    g.DrawString(_T("Scan"), -1, &tabFont, PointF(45, 18), &whiteBrush);
+    g.DrawString(_T("Optimize"), -1, &tabFont, PointF(148, 18), &whiteBrush);
+    g.DrawString(_T("Security"), -1, &tabFont, PointF(252, 18), &whiteBrush);
 
     Font subFont(&fontFamily, 9, FontStyleRegular, UnitPoint);
     g.FillRectangle(&SolidBrush(Color(50, 255, 255, 255)), Rect(width - 155, 13, 140, 28));
-    g.DrawString(_T("실시간 감시 : ON"), -1, &subFont, PointF(width - 145, 19), &whiteBrush);
+    g.DrawString(_T("Real-time : ON"), -1, &subFont, PointF(width - 142, 19), &whiteBrush);
 
     g.FillRectangle(&SolidBrush(Color(255, 246, 248, 250)), 0, 55, width, height - 90);
 
@@ -121,38 +121,38 @@ void OnPaint(HDC hdc, RECT rectClient)
     {
         if (!g_isScanning && g_detectedThreatsCount == 0)
         {
-            g.DrawString(_T("PC가 안전하고 쾌적하게 보호되고 있습니다."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-            g.DrawString(_T("차세대 보안 엔진 v1.3.0 Beta 적용 완료"), -1, &subFont, PointF(30, 105), &textGrayBrush);
+            g.DrawString(_T("Your PC is safely protected."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
+            g.DrawString(_T("Next-Gen Security Engine v1.3.0 Beta Active"), -1, &subFont, PointF(30, 105), &textGrayBrush);
 
             Pen borderPen(Color(255, 215, 220, 230), 1.5f);
 
             RectF card1(30, 140, 220, 260);
             g.FillRectangle(&whiteBrush, card1);
             g.DrawRectangle(&borderPen, card1);
-            g.DrawString(_T("빠른 검사"), -1, &headerFont, PointF(95, 170), &textDarkBrush);
-            g.DrawString(_T("주요 시스템 영역과 메모리를\n신속하게 검사합니다."), -1, &subFont, PointF(55, 215), &textGrayBrush);
+            g.DrawString(_T("Quick Scan"), -1, &headerFont, PointF(85, 170), &textDarkBrush);
+            g.DrawString(_T("Quickly scans critical system\nareas and system memory."), -1, &subFont, PointF(50, 215), &textGrayBrush);
             
             g.FillRectangle(&activeTabBrush, Rect(50, 340, 180, 40));
-            g.DrawString(_T("검사 시작"), -1, &tabFont, PointF(105, 350), &whiteBrush);
+            g.DrawString(_T("Start Scan"), -1, &tabFont, PointF(102, 350), &whiteBrush);
 
             RectF card2(265, 140, 220, 260);
             g.FillRectangle(&whiteBrush, card2);
             g.DrawRectangle(&borderPen, card2);
-            g.DrawString(_T("정밀 검사"), -1, &headerFont, PointF(330, 170), &textDarkBrush);
-            g.DrawString(_T("전체 디스크 드라이브를\n구석구석 검사합니다."), -1, &subFont, PointF(290, 215), &textGrayBrush);
+            g.DrawString(_T("Full Scan"), -1, &headerFont, PointF(330, 170), &textDarkBrush);
+            g.DrawString(_T("Scans all local disk drives\nthoroughly for threats."), -1, &subFont, PointF(290, 215), &textGrayBrush);
 
             RectF card3(500, 140, 245, 260);
             g.FillRectangle(&SolidBrush(Color(255, 32, 42, 56)), card3);
             Font bannerTitleFont(&fontFamily, 12, FontStyleBold, UnitPoint);
             g.DrawString(_T("ESTMEDI 1.3 BETA"), -1, &bannerTitleFont, PointF(520, 165), &whiteBrush);
-            g.DrawString(_T("실제 경로 분석 엔진 탑재.\n\n- C:/ 시스템 정밀 스캔\n- 실시간 악성코드 진단\n- 안전한 격리 및 치료"), -1, &subFont, PointF(520, 210), &SolidBrush(Color(255, 200, 210, 225)));
+            g.DrawString(_T("Real-time Path Engine.\n\n- C:/ Drive Deep Scan\n- Heuristic Threat Detection\n- Safe Quarantine & Heal"), -1, &subFont, PointF(520, 210), &SolidBrush(Color(255, 200, 210, 225)));
         }
         else if (g_isScanning)
         {
-            g.DrawString(_T("시스템을 정밀하게 검사하고 있습니다..."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
+            g.DrawString(_T("Scanning system files and memory..."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
             
             WCHAR progressText[256];
-            wsprintf(progressText, _T("진행률: %d%%  |  현재 검사 중인 경로:"), g_scanProgress);
+            wsprintf(progressText, _T("Progress: %d%%  |  Current Path:"), g_scanProgress);
             g.DrawString(progressText, -1, &subFont, PointF(30, 110), &textGrayBrush);
 
             SolidBrush pathBoxBg(Color(255, 235, 240, 245));
@@ -165,10 +165,10 @@ void OnPaint(HDC hdc, RECT rectClient)
         }
         else if (!g_isScanning && g_detectedThreatsCount > 0)
         {
-            g.DrawString(_T("[경고] 위협이 발견되었습니다! 치료가 필요합니다."), -1, &headerFont, PointF(30, 75), &SolidBrush(Color(255, 220, 50, 50)));
+            g.DrawString(_T("[WARNING] Threats detected! Action required."), -1, &headerFont, PointF(30, 75), &SolidBrush(Color(255, 220, 50, 50)));
             
             WCHAR threatCountText[256];
-            wsprintf(threatCountText, _T("진단된 악성 위협 개수: %d개"), g_detectedThreatsCount);
+            wsprintf(threatCountText, _T("Total Threats Found: %d"), g_detectedThreatsCount);
             g.DrawString(threatCountText, -1, &subFont, PointF(30, 105), &textDarkBrush);
 
             SolidBrush listBg(Color(255, 255, 255, 255));
@@ -183,40 +183,40 @@ void OnPaint(HDC hdc, RECT rectClient)
             }
 
             g.FillRectangle(&activeTabBrush, Rect(250, 340, 130, 45));
-            g.DrawString(_T("치료하기"), -1, &headerFont, PointF(280, 350), &whiteBrush);
+            g.DrawString(_T("Heal All"), -1, &headerFont, PointF(280, 350), &whiteBrush);
 
             g.FillRectangle(&SolidBrush(Color(255, 100, 100, 100)), Rect(400, 340, 130, 45));
-            g.DrawString(_T("다시 검사"), -1, &headerFont, PointF(430, 350), &whiteBrush);
+            g.DrawString(_T("Re-scan"), -1, &headerFont, PointF(430, 350), &whiteBrush);
         }
     }
     else if (g_currentTab == 1)
     {
-        g.DrawString(_T("불필요한 시스템 임시 파일 및 레지스트리를 정리합니다."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-        g.DrawString(_T("최적화 대상 항목 선택 완료"), -1, &subFont, PointF(30, 105), &textGrayBrush);
+        g.DrawString(_T("Optimize system temporary files and registry."), -1, &headerFont, PointF(30, 75), &textDarkBrush);
+        g.DrawString(_T("Optimization targets ready"), -1, &subFont, PointF(30, 105), &textGrayBrush);
 
         RectF optBox(30, 140, 715, 260);
         g.FillRectangle(&whiteBrush, optBox);
         g.DrawRectangle(&Pen(Color(255, 215, 220, 230), 1.5f), optBox);
 
-        g.DrawString(_T("- 시스템 임시 파일 정밀 청소 (대기 중)"), -1, &tabFont, PointF(60, 170), &textDarkBrush);
-        g.DrawString(_T("- 웹 브라우저 캐시 및 쿠키 삭제 (대기 중)"), -1, &tabFont, PointF(60, 210), &textDarkBrush);
-        g.DrawString(_T("- 메모리 최적화 및 프로세스 정리 (대기 중)"), -1, &tabFont, PointF(60, 250), &textDarkBrush);
+        g.DrawString(_T("- Clean system temporary files (Ready)"), -1, &tabFont, PointF(60, 170), &textDarkBrush);
+        g.DrawString(_T("- Web browser cache & cookies clean (Ready)"), -1, &tabFont, PointF(60, 210), &textDarkBrush);
+        g.DrawString(_T("- RAM optimization and process trim (Ready)"), -1, &tabFont, PointF(60, 250), &textDarkBrush);
 
         g.FillRectangle(&activeTabBrush, Rect(280, 320, 200, 45));
-        g.DrawString(_T("PC 최적화 실행"), -1, &headerFont, PointF(315, 330), &whiteBrush);
+        g.DrawString(_T("Run Optimization"), -1, &headerFont, PointF(310, 330), &whiteBrush);
     }
     else if (g_currentTab == 2)
     {
-        g.DrawString(_T("플러스 보안 모듈 및 네트워크 차단 설정"), -1, &headerFont, PointF(30, 75), &textDarkBrush);
-        g.DrawString(_T("시스템 실시간 방화벽 작동 중"), -1, &subFont, PointF(30, 105), &textGrayBrush);
+        g.DrawString(_T("Plus Security Modules & Network Shield"), -1, &headerFont, PointF(30, 75), &textDarkBrush);
+        g.DrawString(_T("System Firewall Active"), -1, &subFont, PointF(30, 105), &textGrayBrush);
 
         RectF secBox(30, 140, 715, 260);
         g.FillRectangle(&whiteBrush, secBox);
         g.DrawRectangle(&Pen(Color(255, 215, 220, 230), 1.5f), secBox);
 
-        g.DrawString(_T("[보안] 랜섬웨어 전용 안심 차단기 : 활성화"), -1, &headerFont, PointF(60, 180), &textDarkBrush);
-        g.DrawString(_T("[네트워크] 악성 피싱/사기 사이트 자동 차단 : 활성화"), -1, &headerFont, PointF(60, 230), &textDarkBrush);
-        g.DrawString(_T("[파일] USB 자동 검사 및 바이러스 보호 : 활성화"), -1, &headerFont, PointF(60, 280), &textDarkBrush);
+        g.DrawString(_T("[Shield] Ransomware Safe Guard : Active"), -1, &headerFont, PointF(60, 180), &textDarkBrush);
+        g.DrawString(_T("[Network] Anti-Phishing Web Filter : Active"), -1, &headerFont, PointF(60, 230), &textDarkBrush);
+        g.DrawString(_T("[USB] Auto-Scan Removable Drives : Active"), -1, &headerFont, PointF(60, 280), &textDarkBrush);
     }
 
     g.FillRectangle(&SolidBrush(Color(255, 230, 235, 240)), 0, height - 35, width, 35);
@@ -224,7 +224,7 @@ void OnPaint(HDC hdc, RECT rectClient)
 
     Font copyrightFont(&fontFamily, 8.5f, FontStyleRegular, UnitPoint);
     g.DrawString(_T("ESTMEDI v1.3 Beta  |  Copyright (c) ISSA STUDIO. All rights reserved."), -1, &copyrightFont, PointF(15, height - 23), &textGrayBrush);
-    g.DrawString(_T("DB 버전: 2026.11.08"), -1, &copyrightFont, PointF(width - 135, height - 23), &textDarkBrush);
+    g.DrawString(_T("DB: 2026.11.08"), -1, &copyrightFont, PointF(width - 110, height - 23), &textDarkBrush);
 }
 
 void StartRealScan(HWND hWnd)
@@ -242,7 +242,7 @@ void StartRealScan(HWND hWnd)
         else if (i == 70) g_currentScanPath = _T("C:\\Program Files\\UnknownApp\\...");
         else if (i == 90) g_currentScanPath = _T("C:\\Windows\\Temp\\...");
 
-        InvalidatedRect(hWnd);
+        RefreshScreen(hWnd);
         UpdateWindow(hWnd);
         Sleep(25);
     }
@@ -254,14 +254,14 @@ void StartRealScan(HWND hWnd)
     g_detectedThreatsCount = (int)g_threatList.size();
     g_isScanning = false;
 
-    InvalidatedRect(hWnd);
+    RefreshScreen(hWnd);
 }
 
 void HealThreats(HWND hWnd)
 {
     int result = MessageBox(hWnd, 
-        _T("진단된 악성코드를 정말로 치료하시겠습니까?\n(치료 시 감염된 파일이 안전하게 제거됩니다.)"), 
-        _T("ESTMEDI 1.3 Beta - 보안 치료"), 
+        _T("Do you really want to heal and remove detected threats?\n(Infected files will be safely deleted.)"), 
+        _T("ESTMEDI 1.3 Beta - Security Heal"), 
         MB_YESNO | MB_ICONWARNING);
 
     if (result == IDYES)
@@ -270,12 +270,12 @@ void HealThreats(HWND hWnd)
             DeleteFileW(threat.filePath.c_str());
         }
 
-        MessageBox(hWnd, _T("모든 악성코드가 성공적으로 치료 및 격리되었습니다!\nPC가 안전한 상태입니다."), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
+        MessageBox(hWnd, _T("All threats have been successfully healed and removed!\nYour PC is now safe."), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
         
         g_detectedThreatsCount = 0;
         g_threatList.clear();
 
-        InvalidatedRect(hWnd);
+        RefreshScreen(hWnd);
     }
 }
 
@@ -290,9 +290,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             if (y >= 8 && y <= 46 && !g_isScanning)
             {
-                if (x >= 15 && x <= 115) { g_currentTab = 0; InvalidatedRect(hWnd); }
-                else if (x >= 120 && x <= 220) { g_currentTab = 1; InvalidatedRect(hWnd); }
-                else if (x >= 225 && x <= 325) { g_currentTab = 2; InvalidatedRect(hWnd); }
+                if (x >= 15 && x <= 115) { g_currentTab = 0; RefreshScreen(hWnd); }
+                else if (x >= 120 && x <= 220) { g_currentTab = 1; RefreshScreen(hWnd); }
+                else if (x >= 225 && x <= 325) { g_currentTab = 2; RefreshScreen(hWnd); }
             }
 
             if (g_currentTab == 0 && !g_isScanning)
@@ -308,13 +308,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                 else if (g_detectedThreatsCount > 0 && (x >= 400 && x <= 530 && y >= 340 && y <= 385))
                 {
                     g_detectedThreatsCount = 0;
-                    InvalidatedRect(hWnd);
+                    RefreshScreen(hWnd);
                 }
             }
 
             if (g_currentTab == 1 && (x >= 280 && x <= 480 && y >= 320 && y <= 365))
             {
-                MessageBox(hWnd, _T("PC 최적화가 완료되었습니다!\n(불필요한 임시 파일 148MB 청소 완료)"), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
+                MessageBox(hWnd, _T("PC Optimization completed successfully!\n(Temporary files cleaned)"), _T("ESTMEDI 1.3 Beta"), MB_OK | MB_ICONINFORMATION);
             }
         }
         break;
@@ -352,7 +352,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-void InvalidatedRect(HWND hWnd)
+void RefreshScreen(HWND hWnd)
 {
     RECT rect;
     GetClientRect(hWnd, &rect);
