@@ -15,7 +15,7 @@ jobs:
 
     - name: Compile C++ with MSVC
       shell: cmd
-      run: cl /EHsc main.cpp /Fe:ESTMEDI.exe user32.lib gdi32.lib gdiplus.lib ole32.lib uuid.lib
+      run: cl /EHsc /DUNICODE /D_UNICODE main.cpp /Fe:ESTMEDI.exe user32.lib gdi32.lib
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
